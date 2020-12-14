@@ -1,5 +1,5 @@
 use crate::runtime;
-use crate::task::JoinHandle;
+use crate::task::{ScopedJoinHandle, JoinHandle};
 
 use std::future::Future;
 
@@ -132,5 +132,25 @@ cfg_rt! {
         .expect("must be called from the context of Tokio runtime configured with either `basic_scheduler` or `threaded_scheduler`");
         let task = crate::util::trace::task(task, "task");
         spawn_handle.spawn(task)
+    }
+    
+    /// Spawns a new asynchronous task, returning a
+    /// [`ScopedJoinHandle`](super::ScopedJoinHandle) for it.
+    ///
+    /// Like [`spawn`], but the resulting task's lifetime is bounded
+    /// rather than `'static`. This prevents you from detaching the task,
+    /// but enables you to run tasks that capture part of their call stack
+    ///
+    /// See [`ScopedJoinHandle`][super::ScopedJoinHandle] for more on scoped tasks.
+    #[cfg_attr(tokio_track_caller, track_caller)]
+    pub fn spawn_scoped<'a, T>(task: T) -> ScopedJoinHandle<'a, T::Output>
+    where
+        T: Future + Send + 'a,
+        T::Output: Send + 'a,
+    {
+        let spawn_handle = runtime::context::spawn_handle()
+        .expect("must be called from the context of Tokio runtime configured with either `basic_scheduler` or `threaded_scheduler`");
+        let task = crate::util::trace::task(task, "task");
+        spawn_handle.spawn_scoped(task)
     }
 }

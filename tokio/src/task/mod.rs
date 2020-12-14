@@ -216,13 +216,13 @@
 //! [`thread::yield_now`]: std::thread::yield_now
 
 cfg_rt! {
-    pub use crate::runtime::task::{JoinError, JoinHandle};
+    pub use crate::runtime::task::{JoinError, JoinHandle, ScopedJoinHandle};
 
     mod blocking;
     pub use blocking::spawn_blocking;
 
     mod spawn;
-    pub use spawn::spawn;
+    pub use spawn::{spawn, spawn_scoped};
 
     cfg_rt_multi_thread! {
         pub use blocking::block_in_place;

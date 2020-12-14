@@ -1,6 +1,6 @@
 cfg_rt! {
     use crate::runtime::basic_scheduler;
-    use crate::task::JoinHandle;
+    use crate::task::{ScopedJoinHandle, JoinHandle};
 
     use std::future::Future;
 }
@@ -40,6 +40,19 @@ cfg_rt! {
                 Spawner::Basic(spawner) => spawner.spawn(future),
                 #[cfg(feature = "rt-multi-thread")]
                 Spawner::ThreadPool(spawner) => spawner.spawn(future),
+            }
+        }
+
+        pub(crate) fn spawn_scoped<'a, F>(&self, future: F) -> ScopedJoinHandle<'a, F::Output>
+        where
+            F: Future + Send + 'a,
+            F::Output: Send + 'a,
+        {
+            match self {
+                #[cfg(feature = "rt")]
+                Spawner::Basic(spawner) => spawner.spawn_scoped(future),
+                #[cfg(feature = "rt-multi-thread")]
+                Spawner::ThreadPool(spawner) => spawner.spawn_scoped(future),
             }
         }
     }

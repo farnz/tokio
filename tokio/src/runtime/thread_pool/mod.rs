@@ -12,7 +12,7 @@ pub(crate) use worker::Launch;
 pub(crate) use worker::block_in_place;
 
 use crate::loom::sync::Arc;
-use crate::runtime::task::{self, JoinHandle};
+use crate::runtime::task::{self, JoinHandle, ScopedJoinHandle};
 use crate::runtime::Parker;
 
 use std::fmt;
@@ -101,6 +101,17 @@ impl Spawner {
     pub(crate) fn shutdown(&mut self) {
         self.shared.close();
     }
+
+    pub(crate) fn spawn_scoped<'a, F>(&self, future: F) -> ScopedJoinHandle<'a, F::Output>
+    where
+        F: Future + Send + 'a,
+        F::Output: Send + 'a,
+    {
+        let (task, handle) = task::scoped_joinable(future);
+        self.shared.schedule(task, false);
+        handle
+    }
+
 }
 
 impl fmt::Debug for Spawner {

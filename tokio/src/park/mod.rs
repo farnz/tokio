@@ -38,7 +38,6 @@ cfg_rt! {
     pub(crate) mod either;
 }
 
-#[cfg(any(feature = "rt", feature = "sync"))]
 pub(crate) mod thread;
 
 use std::sync::Arc;

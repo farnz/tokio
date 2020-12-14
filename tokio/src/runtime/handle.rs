@@ -1,5 +1,5 @@
 use crate::runtime::blocking::task::BlockingTask;
-use crate::runtime::task::{self, JoinHandle};
+use crate::runtime::task::{self, JoinHandle, ScopedJoinHandle};
 use crate::runtime::{blocking, context, driver, Spawner};
 
 use std::future::Future;
@@ -145,6 +145,27 @@ impl Handle {
         #[cfg(feature = "tracing")]
         let future = crate::util::trace::task(future, "task");
         self.spawner.spawn(future)
+    }
+
+    /// Spawn a future onto the Tokio runtime, being scope-aware.
+    ///
+    /// This spawns the given future onto the runtime's executor, usually a
+    /// thread pool. The thread pool is then responsible for polling the future
+    /// until it completes. Unlike `spawn`, the resulting task's lifetime is bounded
+    /// to a scope; see [`ScopedJoinHandle`] for the implications of this.
+    ///
+    /// See [module level][mod] documentation for more details.
+    ///
+    /// [mod]: index.html
+    #[cfg_attr(tokio_track_caller, track_caller)]
+    pub fn spawn_scoped<'a, F>(&self, future: F) -> ScopedJoinHandle<'a, F::Output>
+    where
+        F: Future + Send + 'a,
+        F::Output: Send + 'a,
+    {
+        #[cfg(feature = "tracing")]
+        let future = crate::util::trace::task(future, "task");
+        self.spawner.spawn_scoped(future)
     }
 
     /// Run the provided function on an executor dedicated to blocking

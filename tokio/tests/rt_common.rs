@@ -290,6 +290,52 @@ rt_test! {
     }
 
     #[test]
+    fn spawn_scoped_await() {
+        let rt = rt();
+
+        let hello = "hello";
+
+        let out = rt.block_on(async {
+            tokio::task::spawn_scoped(async {
+                hello
+            }).await
+        });
+
+        assert_eq!(out.ok(), Some(hello));
+    }
+
+    #[test]
+    fn spawn_scoped_drop() {
+        struct ClearOption<'a> {
+            opt: &'a mut Option<&'static str>,
+        };
+
+        impl<'a> Drop for ClearOption<'a> {
+            fn drop(&mut self) {
+                self.opt.take();
+            }
+        }
+
+        let rt = rt();
+
+        let mut opt = Some("hello");
+        // Lack of .await in the following block is deliberate
+        // This confirms that ClearOption does its work in `drop`,
+        // before the task can exit.
+        rt.block_on(async
+        {
+            {
+                assert!(opt.is_some());
+                let task = tokio::task::spawn_scoped(async {
+                    let _clear = ClearOption { opt: &mut opt };
+                });
+            }
+            assert!(opt.is_none());
+        });
+        assert!(opt.is_none());
+    }
+
+    #[test]
     fn outstanding_tasks_dropped() {
         let rt = rt();
 

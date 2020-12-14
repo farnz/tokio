@@ -1,7 +1,7 @@
 use crate::future::poll_fn;
 use crate::loom::sync::Mutex;
 use crate::park::{Park, Unpark};
-use crate::runtime::task::{self, JoinHandle, Schedule, Task};
+use crate::runtime::task::{self, JoinHandle, ScopedJoinHandle, Schedule, Task};
 use crate::sync::notify::Notify;
 use crate::util::linked_list::{Link, LinkedList};
 use crate::util::{waker_ref, Wake, WakerRef};
@@ -320,6 +320,16 @@ impl Spawner {
         F::Output: Send + 'static,
     {
         let (task, handle) = task::joinable(future);
+        self.shared.schedule(task);
+        handle
+    }
+
+    pub(crate) fn spawn_scoped<'a, F>(&self, future: F) -> ScopedJoinHandle<'a, F::Output>
+    where
+        F: Future + Send + 'a,
+        F::Output: Send + 'a,
+    {
+        let (task, handle) = task::scoped_joinable(future);
         self.shared.schedule(task);
         handle
     }

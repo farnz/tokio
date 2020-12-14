@@ -1,4 +1,5 @@
 use crate::runtime::task::RawTask;
+use crate::park;
 
 use std::fmt;
 use std::future::Future;
@@ -145,6 +146,19 @@ cfg_rt! {
         raw: Option<RawTask>,
         _p: PhantomData<T>,
     }
+    
+    /// An owner of a scoped task. Equivalent to [`JoinHandle`], except that instead
+    /// of detaching the task on drop, it synchronously waits for the task to complete.
+    ///
+    /// You must await the `ScopedJoinHandle` before dropping it, as otherwise your task
+    /// may block forever and prevent the runtime thread being used for other tasks.
+    ///
+    /// This struct is created by the [`task::spawn_scoped`] function.
+    pub struct ScopedJoinHandle<'a, T> {
+        // T is the original output
+        join: Option<JoinHandle<T>>,
+        _p: PhantomData<&'a mut &'a T>
+    }
 }
 
 unsafe impl<T: Send> Send for JoinHandle<T> {}
@@ -256,5 +270,66 @@ where
 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("JoinHandle").finish()
+    }
+}
+
+unsafe impl<'a, T: Send> Send for ScopedJoinHandle<'a, T> {}
+unsafe impl<'a, T: Send> Sync for ScopedJoinHandle<'a, T> {}
+
+impl<'a, T> ScopedJoinHandle<'a, T> {
+    pub(super) fn new(raw: RawTask) -> ScopedJoinHandle<'a, T> {
+        ScopedJoinHandle {
+            join: Some(JoinHandle::new(raw)),
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<'a, T> Unpin for ScopedJoinHandle<'a, T> {}
+
+impl<'a, T> Future for ScopedJoinHandle<'a, T> {
+    type Output = <JoinHandle<T> as Future>::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut this = self.as_mut();
+        // If join is unset, this is due to polling after completion
+        let join = Pin::new(&mut this.join).as_pin_mut()
+            .expect("polling after `ScopedJoinHandle` already completed");
+        let ret = join.poll(cx);
+        if ret.is_ready() {
+            self.join.take();
+        }
+        ret
+    }
+}
+
+// In a world with async Drop, the async Drop would do `self.abort(); self.join.take().await`
+// That would mean that this would never wait forever
+impl<'a, T> Drop for ScopedJoinHandle<'a, T> {
+    fn drop(&mut self) {
+        dbg!("ScopedJoinHandle Drop");
+        if let Some(join) = self.join.take() {
+            dbg!("Have a thing to drop");
+            //join.abort();
+            // If this thread is running the task, `abort` above will ensure it returns `Ready` immediately.
+            // If it's on another thread, this blocks us until the task completes
+            let mut park_thread = park::thread::CachedParkThread::new();
+            let res = park_thread.block_on(join);
+            match res {
+                Ok(Ok(_)) => {dbg!("Ok(_)");}
+                Ok(Err(e)) => {dbg!(e);}
+                Err(e) => {dbg!(e);}
+            };
+        }
+        dbg!("Dropped");
+    }
+}
+
+impl<'a, T> fmt::Debug for ScopedJoinHandle<'a, T>
+where
+    T: fmt::Debug,
+{
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_struct("ScopedJoinHandle").finish()
     }
 }

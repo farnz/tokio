@@ -11,7 +11,7 @@ use self::harness::Harness;
 
 mod join;
 #[allow(unreachable_pub)] // https://github.com/rust-lang/rust/issues/57411
-pub use self::join::JoinHandle;
+pub use self::join::{JoinHandle, ScopedJoinHandle};
 
 mod raw;
 use self::raw::RawTask;
@@ -94,6 +94,26 @@ cfg_rt! {
         };
 
         let join = JoinHandle::new(raw);
+
+        (Notified(task), join)
+    }
+}
+
+cfg_rt! {
+    /// Create a new task with an associated scoped join handle
+    pub(crate) fn scoped_joinable<'a, T, S>(task: T) -> (Notified<S>, ScopedJoinHandle<'a, T::Output>)
+    where
+        T: Future + Send + 'a,
+        S: Schedule,
+    {
+        let raw = RawTask::new::<_, S>(task);
+
+        let task = Task {
+            raw,
+            _p: PhantomData,
+        };
+
+        let join = ScopedJoinHandle::new(raw);
 
         (Notified(task), join)
     }
